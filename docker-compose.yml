@@ -1,0 +1,37 @@
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: wallet_db
+      POSTGRES_USER: wallet_admin
+      POSTGRES_PASSWORD: admin5656
+
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U wallet_admin -d wallet_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
+  app:
+    build: .
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_PASSWORD: admin5656
+      JWT_SECRET: bE5AC5OdmRkbCc9bYe1ReSmA0ShJNTz6SSJLBQTwbQA=
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/wallet_db
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+volumes:
+  pgdata:

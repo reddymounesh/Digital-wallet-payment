@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Wallet App</title>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            color: #222;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 900px;
+            margin: 30px auto;
+        }
+
+        .navbar {
+            background: #222;
+            color: white;
+            padding: 15px 30px;
+
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .navbar h2 {
+            margin: 0;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .nav-buttons button {
+            background: #444;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 5px;
+        }
+
+        .nav-buttons button:hover {
+            background: #666;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+
+            box-shadow:
+                0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 10px;
+            margin-top: 6px;
+            margin-bottom: 15px;
+
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        label {
+            font-weight: bold;
+        }
+
+        .primary-button {
+            width: 100%;
+            padding: 11px;
+
+            border: none;
+            border-radius: 5px;
+
+            background: #2563eb;
+            color: white;
+
+            font-size: 15px;
+        }
+
+        .primary-button:hover {
+            background: #1d4ed8;
+        }
+
+        .danger-button {
+            background: #dc2626 !important;
+        }
+
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+
+            padding: 10px;
+            border-radius: 5px;
+
+            margin-bottom: 15px;
+        }
+
+        .success {
+            background: #dcfce7;
+            color: #166534;
+
+            padding: 10px;
+            border-radius: 5px;
+
+            margin-bottom: 15px;
+        }
+
+        .wallet {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .transaction {
+            border-bottom: 1px solid #ddd;
+            padding: 15px 0;
+        }
+
+        .transaction:last-child {
+            border-bottom: none;
+        }
+
+        .debit {
+            color: #dc2626;
+        }
+
+        .credit {
+            color: #16a34a;
+        }
+
+        .auth-container {
+            width: 90%;
+            max-width: 450px;
+            margin: 80px auto;
+        }
+
+        .link-button {
+            background: none;
+            border: none;
+            color: #2563eb;
+            cursor: pointer;
+        }
+
+    </style>
+</head>
+
+<body>
+
+<div id="root"></div>
+
+
+<!-- React -->
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+
+<!-- ReactDOM -->
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+<!-- Babel -->
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+
+<script type="text/babel">
+
+    const { useState, useEffect } = React;
+
+
+    /*
+    ============================================================
+    API CONFIGURATION
+    ============================================================
+    */
+
+    const API_BASE_URL = "http://localhost:8081";
+
+
+    /*
+    ============================================================
+    API HELPER
+    ============================================================
+    */
+
+    async function apiRequest(
+        url,
+        options = {},
+        token = null
+    ) {
+
+        const headers = {
+            "Content-Type": "application/json",
+            ...(options.headers || {})
+        };
+
+
+        if (token) {
+            headers["Authorization"] = `Bearer ${token}`;
+        }
+
+
+        const response = await fetch(
+            API_BASE_URL + url,
+            {
+                ...options,
+                headers
+            }
+        );
+
+
+        /*
+         * Some successful endpoints return empty body.
+         */
+
+        if (response.status === 204) {
+            return null;
+        }
+
+
+        const text = await response.text();
+
+
+        let data = null;
+
+        if (text) {
+
+            try {
+                data = JSON.parse(text);
+            }
+
+            catch {
+                data = text;
+            }
+        }
+
+
+        if (!response.ok) {
+
+            const message =
+                data?.message ||
+                `Request failed with status ${response.status}`;
+
+            throw new Error(message);
+        }
+
+
+        return data;
+    }
+
+
+    /*
+    ============================================================
+    AUTH API
+    ============================================================
+    */
+
+    async function registerUser(email, password) {
+
+        return apiRequest(
+            "/api/v1/auth/register",
+            {
+                method: "POST",
+
+                body: JSON.stringify({
+                    email,
+                    password
+                })
+            }
+        );
+    }
+
+
+    async function loginUser(email, password) {
+
+        return apiRequest(
+            "/api/v1/auth/login",
+            {
+                method: "POST",
+
+                body: JSON.stringify({
+                    email,
+                    password
+                })
+            }
+        );
+    }
+
+
+    /*
+    ============================================================
+    WALLET API
+    ============================================================
+    */
+
+    async function createWallet(type, token) {
+
+        return apiRequest(
+            "/api/v1/wallets",
+            {
+                method: "POST",
+
+                body: JSON.stringify({
+                    type
+                })
+            },
+            token
+        );
+    }
+
+
+    async function transferMoney(
+        senderWalletId,
+        receiverWalletId,
+        amount,
+        token
+    ) {
+
+        return apiRequest(
+            "/api/v1/wallets/transfer",
+            {
+                method: "POST",
+
+                body: JSON.stringify({
+
+                    senderWalletId,
+
+                    receiverWalletId,
+
+                    amount: Number(amount),
+
+                    idempotencyKey:
+                        crypto.randomUUID()
+
+                })
+            },
+            token
+        );
+    }
+
+
+    async function getTransactions(
+        walletId,
+        token
+    ) {
+
+        return apiRequest(
+            `/api/v1/wallets/${walletId}/transactions`,
+            {
+                method: "GET"
+            },
+            token
+        );
+    }
+
+
+    /*
+    ============================================================
+    NAVBAR
+    ============================================================
+    */
+
+    function Navbar({
+        email,
+        page,
+        setPage,
+        logout
+    }) {
+
+        return (
+
+            <nav className="navbar">
+
+                <h2>My Wallet</h2>
+
+                <div className="nav-buttons">
+
+                    <button
+                        onClick={() => setPage("transfer")}
+                    >
+                        Transfer
+                    </button>
+
+
+                    <button
+                        onClick={() => setPage("history")}
+                    >
+                        History
+                    </button>
+
+
+                    <button
+                        className="danger-button"
+                        onClick={logout}
+                    >
+                        Logout
+                    </button>
+
+                </div>
+
+            </nav>
+        );
+    }
+
+
+    /*
+    ============================================================
+    LOGIN / REGISTER
+    ============================================================
+    */
+
+    function LoginRegister({
+        onLogin
+    }) {
+
+        const [isLogin, setIsLogin] =
+            useState(true);
+
+        const [email, setEmail] =
+            useState("");
+
+        const [password, setPassword] =
+            useState("");
+
+        const [error, setError] =
+            useState("");
+
+        const [success, setSuccess] =
+            useState("");
+
+        const [loading, setLoading] =
+            useState(false);
+
+
+        async function handleSubmit(event) {
+
+            event.preventDefault();
+
+            setError("");
+            setSuccess("");
+            setLoading(true);
+
+
+            try {
+
+                if (isLogin) {
+
+                    const data =
+                        await loginUser(
+                            email,
+                            password
+                        );
+
+                    onLogin(
+                        email,
+                        data.token
+                    );
+
+                }
+
+                else {
+
+                    await registerUser(
+                        email,
+                        password
+                    );
+
+                    setSuccess(
+                        "Registration successful. Please login."
+                    );
+
+                    setIsLogin(true);
+
+                    setPassword("");
+                }
+
+            }
+
+            catch (error) {
+
+                setError(error.message);
+            }
+
+            finally {
+
+                setLoading(false);
+            }
+        }
+
+
+        return (
+
+            <div className="auth-container">
+
+                <div className="card">
+
+                    <h1>
+                        {isLogin
+                            ? "Login"
+                            : "Create Account"}
+                    </h1>
+
+
+                    {error && (
+                        <div className="error">
+                            {error}
+                        </div>
+                    )}
+
+
+                    {success && (
+                        <div className="success">
+                            {success}
+                        </div>
+                    )}
+
+
+                    <form
+                        onSubmit={handleSubmit}
+                    >
+
+                        <label>
+                            Email
+                        </label>
+
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={(event) =>
+                                setEmail(
+                                    event.target.value
+                                )
+                            }
+                            required
+                        />
+
+
+                        <label>
+                            Password
+                        </label>
+
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={(event) =>
+                                setPassword(
+                                    event.target.value
+                                )
+                            }
+                            minLength="8"
+                            required
+                        />
+
+
+                        <button
+                            className="primary-button"
+                            type="submit"
+                            disabled={loading}
+                        >
+                            {loading
+                                ? "Please wait..."
+                                : isLogin
+                                    ? "Login"
+                                    : "Register"}
+                        </button>
+
+                    </form>
+
+
+                    <p>
+
+                        {isLogin
+                            ? "Don't have an account?"
+                            : "Already have an account?"}
+
+                        {" "}
+
+                        <button
+                            className="link-button"
+                            onClick={() => {
+
+                                setIsLogin(!isLogin);
+
+                                setError("");
+                                setSuccess("");
+
+                            }}
+                        >
+
+                            {isLogin
+                                ? "Register"
+                                : "Login"}
+
+                        </button>
+
+                    </p>
+
+                </div>
+
+            </div>
+        );
+    }
+
+
+    /*
+    ============================================================
+    TRANSFER MONEY
+    ============================================================
+    */
+
+    function TransferMoney({
+        token,
+        wallets,
+        setWallets
+    }) {
+
+        const [senderWalletId,
+            setSenderWalletId] =
+            useState("");
+
+        const [receiverWalletId,
+            setReceiverWalletId] =
+            useState("");
+
+        const [amount,
+            setAmount] =
+            useState("");
+
+
+        const [walletType,
+            setWalletType] =
+            useState("PRIMARY");
+
+
+        const [error,
+            setError] =
+            useState("");
+
+        const [success,
+            setSuccess] =
+            useState("");
+
+        const [loading,
+            setLoading] =
+            useState(false);
+
+
+        /*
+         * Create wallet
+         */
+
+        async function handleCreateWallet() {
+
+            setError("");
+            setSuccess("");
+
+            try {
+
+                const wallet =
+                    await createWallet(
+                        walletType,
+                        token
+                    );
+
+
+                setWallets(
+                    previous => [
+                        ...previous,
+                        wallet
+                    ]
+                );
+
+
+                setSuccess(
+                    `${walletType} wallet created.`
+                );
+
+            }
+
+            catch (error) {
+
+                setError(error.message);
+            }
+        }
+
+
+        /*
+         * Transfer
+         */
+
+        async function handleTransfer(event) {
+
+            event.preventDefault();
+
+            setError("");
+            setSuccess("");
+
+            if (
+                !senderWalletId ||
+                !receiverWalletId
+            ) {
+
+                setError(
+                    "Please select a sender wallet and enter a receiver wallet ID."
+                );
+
+                return;
+            }
+
+
+            if (
+                senderWalletId === receiverWalletId
+            ) {
+
+                setError(
+                    "Sender and receiver wallets must be different."
+                );
+
+                return;
+            }
+
+
+            if (Number(amount) <= 0) {
+
+                setError(
+                    "Amount must be positive."
+                );
+
+                return;
+            }
+
+
+            setLoading(true);
+
+
+            try {
+
+                const result =
+                    await transferMoney(
+                        senderWalletId,
+                        receiverWalletId,
+                        amount,
+                        token
+                    );
+
+
+                setSuccess(
+                    `Transfer successful. New balance: ${result.senderBalance}`
+                );
+
+
+                setAmount("");
+
+            }
+
+            catch (error) {
+
+                setError(error.message);
+            }
+
+            finally {
+
+                setLoading(false);
+            }
+        }
+
+
+        return (
+
+            <div className="container">
+
+                <div className="card">
+
+                    <h2>
+                        My Wallets
+                    </h2>
+
+
+                    {wallets.length === 0 && (
+                        <p>
+                            You don't have any wallets yet.
+                        </p>
+                    )}
+
+
+                    {wallets.map(wallet => (
+
+                        <div
+                            className="wallet"
+                            key={wallet.id}
+                        >
+
+                            <strong>
+                                {wallet.type}
+                            </strong>
+
+                            <p>
+                                Wallet ID:
+                                <br />
+
+                                {wallet.id}
+                            </p>
+
+                            <p>
+                                Balance:
+                                {" "}
+                                {wallet.balance}
+                            </p>
+
+                        </div>
+
+                    ))}
+
+                </div>
+
+
+                <div className="card">
+
+                    <h2>
+                        Create Wallet
+                    </h2>
+
+
+                    {error && (
+                        <div className="error">
+                            {error}
+                        </div>
+                    )}
+
+
+                    {success && (
+                        <div className="success">
+                            {success}
+                        </div>
+                    )}
+
+
+                    <label>
+                        Wallet Type
+                    </label>
+
+
+                    <select
+                        value={walletType}
+                        onChange={(event) =>
+                            setWalletType(
+                                event.target.value
+                            )
+                        }
+                    >
+
+                        <option value="PRIMARY">
+                            PRIMARY
+                        </option>
+
+                        <option value="SAVINGS">
+                            SAVINGS
+                        </option>
+
+                    </select>
+
+
+                    <button
+                        className="primary-button"
+                        onClick={handleCreateWallet}
+                    >
+                        Create Wallet
+                    </button>
+
+                </div>
+
+
+                <div className="card">
+
+                    <h2>
+                        Transfer Money
+                    </h2>
+
+
+                    <form
+                        onSubmit={handleTransfer}
+                    >
+
+                        <label>
+                            Sender Wallet
+                        </label>
+
+
+                        <select
+                            value={senderWalletId}
+                            onChange={(event) =>
+                                setSenderWalletId(
+                                    event.target.value
+                                )
+                            }
+                            required
+                        >
+
+                            <option value="">
+                                Select wallet
+                            </option>
+
+
+                            {wallets.map(wallet => (
+
+                                <option
+                                    key={wallet.id}
+                                    value={wallet.id}
+                                >
+                                    {wallet.type}
+                                    {" - "}
+                                    {wallet.balance}
+                                </option>
+
+                            ))}
+
+                        </select>
+
+
+                        <label>
+                            Receiver Wallet ID
+                        </label>
+
+
+                        <input
+                            type="text"
+                            value={receiverWalletId}
+                            onChange={(event) =>
+                                setReceiverWalletId(
+                                    event.target.value
+                                )
+                            }
+                            placeholder="Enter receiver wallet UUID"
+                            required
+                        />
+
+
+                        <label>
+                            Amount
+                        </label>
+
+
+                        <input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={amount}
+                            onChange={(event) =>
+                                setAmount(
+                                    event.target.value
+                                )
+                            }
+                            placeholder="Enter amount"
+                            required
+                        />
+
+
+                        <button
+                            className="primary-button"
+                            type="submit"
+                            disabled={loading}
+                        >
+
+                            {loading
+                                ? "Transferring..."
+                                : "Transfer Money"}
+
+                        </button>
+
+                    </form>
+
+                </div>
+
+            </div>
+        );
+    }
+
+
+    /*
+    ============================================================
+    TRANSACTION HISTORY
+    ============================================================
+    */
+
+    function TransactionHistory({
+        token,
+        wallets
+    }) {
+
+        const [selectedWallet,
+            setSelectedWallet] =
+            useState("");
+
+        const [transactions,
+            setTransactions] =
+            useState([]);
+
+        const [error,
+            setError] =
+            useState("");
+
+        const [loading,
+            setLoading] =
+            useState(false);
+
+
+        async function loadTransactions() {
+
+            if (!selectedWallet) {
+
+                setError(
+                    "Please select a wallet."
+                );
+
+                return;
+            }
+
+
+            setError("");
+            setLoading(true);
+
+
+            try {
+
+                const data =
+                    await getTransactions(
+                        selectedWallet,
+                        token
+                    );
+
+
+                setTransactions(data);
+
+            }
+
+            catch (error) {
+
+                setError(error.message);
+            }
+
+            finally {
+
+                setLoading(false);
+            }
+        }
+
+
+        return (
+
+            <div className="container">
+
+                <div className="card">
+
+                    <h2>
+                        Transaction History
+                    </h2>
+
+
+                    {error && (
+                        <div className="error">
+                            {error}
+                        </div>
+                    )}
+
+
+                    <label>
+                        Select Wallet
+                    </label>
+
+
+                    <select
+                        value={selectedWallet}
+                        onChange={(event) =>
+                            setSelectedWallet(
+                                event.target.value
+                            )
+                        }
+                    >
+
+                        <option value="">
+                            Select wallet
+                        </option>
+
+
+                        {wallets.map(wallet => (
+
+                            <option
+                                key={wallet.id}
+                                value={wallet.id}
+                            >
+                                {wallet.type}
+                                {" - "}
+                                {wallet.id}
+                            </option>
+
+                        ))}
+
+                    </select>
+
+
+                    <button
+                        className="primary-button"
+                        onClick={loadTransactions}
+                        disabled={loading}
+                    >
+
+                        {loading
+                            ? "Loading..."
+                            : "Load Transactions"}
+
+                    </button>
+
+                </div>
+
+
+                <div className="card">
+
+                    {transactions.length === 0 ? (
+
+                        <p>
+                            No transactions to display.
+                        </p>
+
+                    ) : (
+
+                        transactions.map(
+                            transaction => (
+
+                                <div
+                                    className="transaction"
+                                    key={
+                                        transaction.transactionGroupId
+                                    }
+                                >
+
+                                    <strong
+                                        className={
+                                            transaction.direction ===
+                                            "DEBIT"
+                                                ? "debit"
+                                                : "credit"
+                                        }
+                                    >
+
+                                        {transaction.direction}
+
+                                    </strong>
+
+
+                                    <p>
+                                        Amount:
+                                        {" "}
+                                        {transaction.amount}
+                                    </p>
+
+
+                                    <p>
+                                        Status:
+                                        {" "}
+                                        {transaction.status}
+                                    </p>
+
+
+                                    <p>
+                                        Date:
+                                        {" "}
+                                        {new Date(
+                                            transaction.createdAt
+                                        ).toLocaleString()}
+                                    </p>
+
+
+                                    <small>
+                                        Transaction ID:
+                                        {" "}
+                                        {
+                                            transaction
+                                                .transactionGroupId
+                                        }
+                                    </small>
+
+                                </div>
+
+                            )
+                        )
+
+                    )}
+
+                </div>
+
+            </div>
+        );
+    }
+
+
+    /*
+    ============================================================
+    MAIN APP
+    ============================================================
+    */
+
+    function App() {
+
+        /*
+         * Which page are we currently viewing?
+         */
+
+        const [page, setPage] =
+            useState("login");
+
+
+        /*
+         * Authentication state
+         */
+
+        const [token, setToken] =
+            useState(
+                localStorage.getItem("token")
+            );
+
+
+        const [email, setEmail] =
+            useState(
+                localStorage.getItem("email")
+            );
+
+
+        /*
+         * Wallet state
+         */
+
+        const [wallets, setWallets] =
+            useState([]);
+
+
+        /*
+         * When token changes,
+         * decide which page to show.
+         */
+
+        useEffect(() => {
+
+            if (token) {
+
+                setPage("transfer");
+
+            }
+
+            else {
+
+                setPage("login");
+            }
+
+        }, [token]);
+
+
+        /*
+         * Login callback
+         */
+
+        function handleLogin(
+            loggedInEmail,
+            loggedInToken
+        ) {
+
+            setEmail(loggedInEmail);
+
+            setToken(loggedInToken);
+
+            localStorage.setItem(
+                "email",
+                loggedInEmail
+            );
+
+            localStorage.setItem(
+                "token",
+                loggedInToken
+            );
+        }
+
+
+        /*
+         * Logout
+         */
+
+        function logout() {
+
+            localStorage.removeItem("token");
+
+            localStorage.removeItem("email");
+
+            setToken(null);
+
+            setEmail(null);
+
+            setWallets([]);
+        }
+
+
+        /*
+         * Not authenticated
+         */
+
+        if (!token) {
+
+            return (
+
+                <LoginRegister
+                    onLogin={handleLogin}
+                />
+
+            );
+        }
+
+
+        /*
+         * Authenticated application
+         */
+
+        return (
+
+            <>
+
+                <Navbar
+                    email={email}
+                    page={page}
+                    setPage={setPage}
+                    logout={logout}
+                />
+
+
+                {page === "transfer" && (
+
+                    <TransferMoney
+                        token={token}
+                        wallets={wallets}
+                        setWallets={setWallets}
+                    />
+
+                )}
+
+
+                {page === "history" && (
+
+                    <TransactionHistory
+                        token={token}
+                        wallets={wallets}
+                    />
+
+                )}
+
+            </>
+        );
+    }
+
+
+    /*
+    ============================================================
+    START REACT
+    ============================================================
+    */
+
+    const root =
+        ReactDOM.createRoot(
+            document.getElementById("root")
+        );
+
+
+    root.render(
+        <App />
+    );
+
+</script>
+
+</body>
+
+</html>
