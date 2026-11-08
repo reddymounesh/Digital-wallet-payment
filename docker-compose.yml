@@ -18,19 +18,29 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
 
   app:
     build: .
     environment:
+
       SPRING_PROFILES_ACTIVE: dev
       DB_PASSWORD: admin5656
       JWT_SECRET: bE5AC5OdmRkbCc9bYe1ReSmA0ShJNTz6SSJLBQTwbQA=
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/wallet_db
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+
     ports:
       - "8082:8082"
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
 
 
 volumes:

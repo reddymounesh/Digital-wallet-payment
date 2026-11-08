@@ -10,7 +10,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -36,8 +38,9 @@ public class WalletController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
     @GetMapping("/{walletId}/transactions")
-    public ResponseEntity<List<TransactionHistoryDto>> getTransactionHistory(@PathVariable UUID walletId) {
-        List<TransactionHistoryDto> history = walletService.getTransactionHistory(walletId);
+    public ResponseEntity<PageTransactionResponseDto> getTransactionHistory(@PathVariable UUID walletId,@RequestParam(defaultValue = "0") int page,@RequestParam(defaultValue = "10") int size) {
+
+        PageTransactionResponseDto history = walletService.getTransactionHistory(walletId,page,size);
         return ResponseEntity.ok(history);
     }
 
@@ -50,6 +53,11 @@ public class WalletController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
 
+    }
+
+    public ResponseEntity<Map<String, BigDecimal>> getBalance(@PathVariable UUID walletId){
+        BigDecimal balance = walletService.getBalance(walletId);
+        return ResponseEntity.ok(Map.of("balance",balance));
     }
 
 

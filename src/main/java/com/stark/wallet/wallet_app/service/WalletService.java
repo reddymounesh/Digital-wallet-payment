@@ -1,5 +1,6 @@
 package com.stark.wallet.wallet_app.service;
 
+import com.stark.wallet.wallet_app.dto.PageTransactionResponseDto;
 import com.stark.wallet.wallet_app.dto.TransactionHistoryDto;
 import com.stark.wallet.wallet_app.dto.TransferResponseDto;
 import com.stark.wallet.wallet_app.entity.*;
@@ -9,10 +10,15 @@ import com.stark.wallet.wallet_app.exception.WalletNotFoundException;
 import com.stark.wallet.wallet_app.repository.IdempotencyKeyRepository;
 import com.stark.wallet.wallet_app.repository.TransactionRepository;
 import com.stark.wallet.wallet_app.repository.WalletRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -22,25 +28,15 @@ import java.util.UUID;
 public class WalletService {
     private final WalletRepository walletRepository;
     private final TransactionRepository transactionRepository;
-    private final IdempotencyKeyRepository idempotencyKeyRepository = null;
+    private final IdempotencyKeyRepository idempotencyKeyRepository;
 
 
-    public WalletService(WalletRepository walletRepository, TransactionRepository transactionRepository, IdempotencyKeyRepository idempotencyKeyRepository){
+    public WalletService(WalletRepository walletRepository, TransactionRepository transactionRepository, IdempotencyKeyRepository idempotencyKeyRepository, RedisTemplate<String, String> redisTemplate){
         this.walletRepository=walletRepository;
         this.transactionRepository=transactionRepository;
+        this.redisTemplate = redisTemplate;
     }
-    public List<TransactionHistoryDto> getTransactionHistory(UUID walletId) {
-        List<Transaction> transactions = transactionRepository.findByWalletIdOrderByCreatedAtDesc(walletId);
 
-        return transactions.stream()
-                .map(t -> new TransactionHistoryDto(
-                        t.getTransactionGroupId(),
-                        t.getDirection().name(),
-                        t.getAmount(),
-                        t.getStatus().name(),
-                        t.getCreatedAt()
-                )).toList();
-    }
 
     public Wallet createWallet(User user,WalletType type){
 
@@ -57,6 +53,48 @@ public class WalletService {
         wallet.setBalance(BigDecimal.ZERO);
 
         return walletRepository.save(wallet);
+
+    }
+
+    private final RedisTemplate<String,String> redisTemplate;
+
+    public BigDecimal getBalance(UUID walletId){
+        String cacheKey="wallet:balance:"+walletId;
+
+        String cached =redisTemplate.opsForValue().get(cacheKey);
+        if(cached!=null){
+            return new BigDecimal(cached);
+        }
+
+        Wallet wallet=walletRepository.findById(walletId).orElseThrow(()->new WalletNotFoundException("Wallet not found: "+walletId));
+
+        redisTemplate.opsForValue().set(cacheKey,wallet.getBalance().toString(), Duration.ofMinutes(5));
+
+        return wallet.getBalance();
+
+    }
+
+    public PageTransactionResponseDto getTransactionHistory(UUID walletId,int page,int size){
+        Pageable pageable =  PageRequest.of(page,size);
+        Page<Transaction> transactionPage=transactionRepository.findByWalletIdOrderByCreatedAtDesc(walletId,pageable);
+
+        List<TransactionHistoryDto> dtoList= transactionPage.getContent().stream()
+                .map(t->new TransactionHistoryDto(
+                        t.getTransactionGroupId(),
+                        t.getDirection().name(),
+                        t.getAmount(),
+                        t.getStatus().name(),
+                        t.getCreatedAt()
+                ))
+                .toList();
+
+        return new PageTransactionResponseDto(
+                dtoList,
+                transactionPage.getNumber(),
+                transactionPage.getTotalPages(),
+                transactionPage.getTotalElements(),
+                transactionPage.hasNext()
+        );
 
     }
 
@@ -139,6 +177,9 @@ public class WalletService {
 
         transactionRepository.save(debitTransaction);
         transactionRepository.save(creditTransaction);
+
+        redisTemplate.delete("wallet:balance:"+sender.getId());
+        redisTemplate.delete("wallet:balance:"+reciever.getId());
 
         IdempotencyKey record = new IdempotencyKey();
         record.setIdempotencykey(idempotencyKey);
